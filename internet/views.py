@@ -1,60 +1,169 @@
-import re
-
+import requests
+import json
 from django.shortcuts import render
-# from .models import PerformanceData
 import subprocess
 import speedtest
+import requests
+from .models import PerformanceData
 
 
-# Create your views here.
 def calculate_performance(request):
-    # Perform network performance calculations
-    packet_loss, latency, bandwidth_utilization, network_speed = perform_calculations()
+    if request.method == 'POST':
+        ip_address = request.POST.get('ip_address')
 
-    return render(request, 'calculate_performance.html', {
-        'packet_loss': packet_loss,
-        'latency': latency,
-        'bandwidth_utilization': bandwidth_utilization,
-        'network_speed': network_speed
-    })
+        if ip_address:
 
-def perform_calculations():
-    # Calculate packet loss
-    packet_loss_result = subprocess.run(['ping', '-c', '10', 'example.com'], stdout=subprocess.PIPE)
-    packet_loss_output = packet_loss_result.stdout.decode()
-    packet_loss = parse_packet_loss(packet_loss_output)
+            packet_loss = check_packet_loss(ip_address)
 
-    # Calculate latency
-    latency_result = subprocess.run(['ping', '-c', '10', '-i', '0.2', 'example.com'], stdout=subprocess.PIPE)
-    latency_output = latency_result.stdout.decode()
-    latency = parse_latency(latency_output)
+            latency = check_latency(ip_address)
+            latency = int(latency) if latency != float('inf') else latency
 
-    # Calculate bandwidth utilization
-    bandwidth_utilization = calculate_bandwidth_utilization()
+            bandwidth_utilization = check_bandwidth_utilization(ip_address)
+            bandwidth_utilization = int(bandwidth_utilization) if bandwidth_utilization is not None \
+                else bandwidth_utilization
 
-    # Calculate network speed
-    network_speed = calculate_network_speed()
+            download_speed, upload_speed, network_speed = check_network_speed()
+            download_speed = int(download_speed)
+            upload_speed = int(upload_speed)
 
-    return packet_loss, latency, bandwidth_utilization, network_speed
+            network_security = check_network_security(ip_address)
 
-def parse_packet_loss(output):
-    match = re.search(r'(\d+)% packet loss', output)
-    if match:
-        return float(match.group(1))
-    return 0.0
+            cnt = 0
+            average_Loss = 0
+            average_Latency = 0
+            average_Bandwidth = 0
+            average_DSpeed = 0
+            average_USpeed = 0
 
-def parse_latency(output):
-    match = re.search(r'rtt min/avg/max/mdev = (\d+\.\d+)/(\d+\.\d+)/(\d+\.\d+)/(\d+\.\d+) ms', output)
-    if match:
-        return float(match.group(2))
-    return 0.0
+            if bandwidth_utilization is not None:
+                PerformanceData.objects.create(
+                    packet_loss=packet_loss,
+                    latency=latency,
+                    bandwidth_utilization=bandwidth_utilization,
+                    download_speed=download_speed,
+                    upload_speed=upload_speed
+                )
 
-def calculate_bandwidth_utilization():
-    # Implement your logic to calculate bandwidth utilization
-    return 0.0
+            upload_speeds = []
+            download_speeds = []
 
-def calculate_network_speed():
-    st = speedtest.Speedtest()
-    download_speed = st.download() / 1024 / 1024  # Convert to Mbps
-    upload_speed = st.upload() / 1024 / 1024  # Convert to Mbps
-    return f"{download_speed:.2f} Mbps (Download), {upload_speed:.2f} Mbps (Upload)"
+            for objects in PerformanceData.objects.all():
+                upload_speeds.append(objects.upload_speed)
+                download_speeds.append(objects.download_speed)
+                average_Loss += objects.packet_loss
+                average_Latency += objects.latency if objects.latency != float('inf') else 1000
+                average_Bandwidth += objects.bandwidth_utilization \
+                    if objects.bandwidth_utilization is not None else 1000
+                average_DSpeed += objects.download_speed
+                average_USpeed += objects.upload_speed
+                cnt += 1
+            upload_speeds.append(upload_speed)
+            download_speeds.append(download_speed)
+            upload_speeds = list(sorted(upload_speeds))
+            download_speeds = list(sorted(download_speeds))
+
+            place = str(int(int((upload_speeds.index(upload_speed) + download_speeds.index(download_speed)) / 2) / cnt * 100))
+
+            print(f"Average loss: {average_Loss / cnt}",
+                  f"Average latency: {average_Latency / cnt}",
+                  f"Average bandwidth: {average_Bandwidth}",
+                  f"Average download speed: {average_DSpeed}",
+                  f"Average upload speed: {average_USpeed}",
+                  sep="\n")
+
+            context = {
+                'ip_address': ip_address,
+                'packet_loss': packet_loss,
+                'latency': latency,
+                'bandwidth_utilization': bandwidth_utilization,
+                'download_speed': download_speed,
+                'upload_speed': upload_speed,
+                'network_speed': network_speed,
+                'average_Loss': str(int(average_Loss / cnt)),
+                'average_Latency': str(int(average_Latency / cnt)),
+                'average_Bandwidth': str(int(average_Bandwidth / cnt)),
+                'average_DSpeed': str(int(average_DSpeed / cnt)),
+                'average_USpeed': str(int(average_USpeed / cnt)),
+                'place' : place,
+            }
+            return render(request, 'results.html', context=context)
+
+    return render(request, 'calculate_performance.html')
+
+
+def check_packet_loss(ip_address):
+    # Используем утилиту ping для проверки потери пакетов
+    # Опция -c указывает количество пакетов для отправки
+    # Опция -W указывает время ожидания ответа в секундах
+    command = ['ping', '-c', '5', '-W', '1', ip_address]
+    try:
+        output = subprocess.check_output(command)
+        output = output.decode('utf-8')
+        packet_loss = float(output.split('packet loss')[0].split(',')[-1].strip().replace('%', ''))
+        return packet_loss
+    except subprocess.CalledProcessError:
+        return 100.0
+
+
+def check_latency(ip_address):
+    # Используем утилиту ping для измерения задержки (latency)
+    # Опция -c указывает количество пакетов для отправки
+    # Опция -W указывает время ожидания ответа в секундах
+    command = ['ping', '-c', '5', '-W', '1', ip_address]
+    try:
+        output = subprocess.check_output(command)
+        output = output.decode('utf-8')
+        latency = float(output.split('/stddev = ')[1].split('/')[1])
+        return latency
+    except subprocess.CalledProcessError:
+        return float('inf')
+
+
+def check_bandwidth_utilization(ip_address):
+    # Реализация проверки использования пропускной способности сети
+    # на основе запросов к удаленному серверу или собственным методам измерения
+    try:
+        # Выполните запрос к удаленному серверу и измерьте время ответа
+        response = requests.get('http://' + ip_address)
+        response_time = response.elapsed.total_seconds() * 1000  # В миллисекундах
+
+        # Рассчитайте использование пропускной способности на основе времени ответа
+        bandwidth_utilization = response_time  # Примерная оценка, адаптируйте к вашим требованиям
+
+        return bandwidth_utilization
+    except requests.RequestException:
+        return None
+
+
+def check_network_speed():
+    # Реализация проверки скорости сети с использованием библиотеки Speedtest-cli
+    try:
+        st = speedtest.Speedtest()
+        download_speed = st.download() / 10 ** 6  # Скорость загрузки в Мбит/с
+        upload_speed = st.upload() / 10 ** 6  # Скорость отдачи в Мбит/с
+
+        # Определите условия для определения высокой скорости сети
+        if download_speed >= 20 and upload_speed >= 50:
+            network_speed = "High"
+        else:
+            network_speed = "Low"
+
+        return download_speed, upload_speed, network_speed
+    except speedtest.SpeedtestException:
+        return None
+
+
+def check_network_security(ip_address):
+    # Реализация проверки безопасности сети на основе системных утилит,
+    # анализа журналов или других методов, адаптированных к вашим требованиям
+    # ...
+
+    # Пример: Проверка доступности удаленного хоста по IP-адресу
+    try:
+        response = requests.get('http://' + ip_address)
+        if response.status_code == 200:
+            return True
+        else:
+            return False
+    except requests.RequestException:
+        return False
