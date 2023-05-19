@@ -1,49 +1,30 @@
+{% extends 'base.html' %}
 {% load static %}
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Calculate Performance</title>
-    <script src="{% static 'script.js' %}"></script>
-</head>
-<body>
+
+{% block content %}
+    <div align="center">
     <h2>Network Performance Metrics:</h2>
     <form id="performanceForm" action="/performance/calculate/" method="POST">
         {% csrf_token %}
-        <label for="packetLossThreshold">Packet Loss Threshold:</label>
-        <input type="text" id="packetLossThreshold" name="packet_loss_threshold">
-        <label for="latencyThreshold">Latency Threshold:</label>
-        <input type="text" id="latencyThreshold" name="latency_threshold">
-        <label for="bandwidthUtilizationThreshold">Bandwidth Utilization Threshold:</label>
-        <input type="text" id="bandwidthUtilizationThreshold" name="bandwidth_utilization_threshold">
         <label for="ipAddress">IP Address:</label>
         <input type="text" id="ipAddress" name="ip_address">
-        <button type="submit">Calculate Performance</button>
+        <button type="submit" id="speedtest-btn" class="btn btn-primary">Calculate Performance</button>
     </form>
+    <div id="loading-animation" style="display: none;">
+      <img src="{% static 'loading.gif' %}" alt="Loading...">
+    </div>
 
-    <h1>Performance Calculation</h1>
+</div>
+<script>
+  // When the button is clicked, initiate the speed test
+  document.getElementById('speedtest-btn').addEventListener('click', function() {
+    runSpeedTest();
+  });
 
-    <h2>IP Address: {{ ip_address }}</h2>
-
-    <h3>Packet Loss:</h3>
-    <p>Packet Loss: {{ packet_loss }}</p>
-    <p>Status: {{ packet_loss_status }}</p>
-
-    <h3>Latency:</h3>
-    <p>Latency: {{ latency }} ms</p>
-    <p>Status: {{ latency_status }}</p>
-
-    <h3>Bandwidth Utilization:</h3>
-    <p>Bandwidth Utilization: {{ bandwidth_utilization }} ms</p>
-    <p>Status: {{ bandwidth_utilization_status }}</p>
-
-    <h3>Network Speed:</h3>
-    <p>Download Speed: {{ download_speed }} Mbps</p>
-    <p>Upload Speed: {{ upload_speed }} Mbps</p>
-    <p>Network Speed Threshold: {{ network_speed }}</p>
-    <p>Status: {{ network_speed_status }}</p>
-
-    <h3>Network Security:</h3>
-    <p>Network Security: {{ network_security_status }}</p>
-</body>
-</html>
+  function runSpeedTest() {
+    // Show the loading animation
+    var loadingAnimation = document.getElementById('loading-animation');
+    loadingAnimation.style.display = 'block';
+  }
+</script>
+{% endblock %}

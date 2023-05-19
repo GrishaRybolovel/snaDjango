@@ -18,16 +18,4 @@ document.getElementById('performanceForm').addEventListener('submit', function(e
     };
 
     xhr.send(JSON.stringify(data));
-
-    xhr.onload = function() {
-        if (xhr.status === 200) {
-            var response = JSON.parse(xhr.responseText);
-            // Обновляем значения в HTML
-            document.getElementById('packetLoss').textContent = response.packet_loss;
-            document.getElementById('latency').textContent = response.latency;
-            document.getElementById('bandwidthUtilization').textContent = response.bandwidth_utilization;
-            document.getElementById('networkSpeed').textContent = response.network_speed;
-            document.getElementById('networkSecurity').textContent = response.network_security;
-        }
-    };
 });

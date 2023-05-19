@@ -4,59 +4,91 @@ from django.shortcuts import render
 import subprocess
 import speedtest
 import requests
+from .models import PerformanceData
 
 
 def calculate_performance(request):
     if request.method == 'POST':
         ip_address = request.POST.get('ip_address')
-        packet_loss_threshold = request.POST.get('packet_loss_threshold')
-        latency_threshold = request.POST.get('latency_threshold')
-        bandwidth_utilization_threshold = request.POST.get('bandwidth_utilization_threshold')
 
-        if ip_address and packet_loss_threshold and latency_threshold and bandwidth_utilization_threshold:
-            packet_loss_threshold = float(packet_loss_threshold)
-            latency_threshold = float(latency_threshold)
-            bandwidth_utilization_threshold = float(bandwidth_utilization_threshold)
+        if ip_address:
 
             packet_loss = check_packet_loss(ip_address)
-            packet_loss_status = "Passed" if packet_loss is not None and packet_loss <= packet_loss_threshold else "Failed"
 
             latency = check_latency(ip_address)
-            latency_status = "Passed" if latency is not None and latency <= latency_threshold else "Failed"
-            latency = int(latency) if latency is not None else latency
+            latency = int(latency) if latency != float('inf') else latency
 
             bandwidth_utilization = check_bandwidth_utilization(ip_address)
-            bandwidth_utilization_status = "Passed" if bandwidth_utilization is not None and bandwidth_utilization <= bandwidth_utilization_threshold else "Failed"
             bandwidth_utilization = int(bandwidth_utilization) if bandwidth_utilization is not None \
                 else bandwidth_utilization
 
             download_speed, upload_speed, network_speed = check_network_speed()
-            network_speed_status = "Passed" if network_speed is not None and network_speed == "High" else "Failed"
             download_speed = int(download_speed)
             upload_speed = int(upload_speed)
 
             network_security = check_network_security(ip_address)
-            network_security_status = "Passed" if network_security is not None else "Failed"
+
+            cnt = 0
+            average_Loss = 0
+            average_Latency = 0
+            average_Bandwidth = 0
+            average_DSpeed = 0
+            average_USpeed = 0
+
+            if bandwidth_utilization is not None:
+                PerformanceData.objects.create(
+                    packet_loss=packet_loss,
+                    latency=latency,
+                    bandwidth_utilization=bandwidth_utilization,
+                    download_speed=download_speed,
+                    upload_speed=upload_speed
+                )
+
+            upload_speeds = []
+            download_speeds = []
+
+            for objects in PerformanceData.objects.all():
+                upload_speeds.append(objects.upload_speed)
+                download_speeds.append(objects.download_speed)
+                average_Loss += objects.packet_loss
+                average_Latency += objects.latency if objects.latency != float('inf') else 1000
+                average_Bandwidth += objects.bandwidth_utilization \
+                    if objects.bandwidth_utilization is not None else 1000
+                average_DSpeed += objects.download_speed
+                average_USpeed += objects.upload_speed
+                cnt += 1
+            upload_speeds.append(upload_speed)
+            download_speeds.append(download_speed)
+            upload_speeds = list(sorted(upload_speeds))
+            download_speeds = list(sorted(download_speeds))
+
+            place = str(int(int((upload_speeds.index(upload_speed) + download_speeds.index(download_speed)) / 2) / cnt * 100))
+
+            print(f"Average loss: {average_Loss / cnt}",
+                  f"Average latency: {average_Latency / cnt}",
+                  f"Average bandwidth: {average_Bandwidth}",
+                  f"Average download speed: {average_DSpeed}",
+                  f"Average upload speed: {average_USpeed}",
+                  sep="\n")
 
             context = {
                 'ip_address': ip_address,
                 'packet_loss': packet_loss,
-                'packet_loss_status': packet_loss_status,
                 'latency': latency,
-                'latency_status': latency_status,
                 'bandwidth_utilization': bandwidth_utilization,
-                'bandwidth_utilization_status': bandwidth_utilization_status,
                 'download_speed': download_speed,
                 'upload_speed': upload_speed,
                 'network_speed': network_speed,
-                'network_speed_status': network_speed_status,
-                'network_security_status': network_security_status
+                'average_Loss': str(int(average_Loss / cnt)),
+                'average_Latency': str(int(average_Latency / cnt)),
+                'average_Bandwidth': str(int(average_Bandwidth / cnt)),
+                'average_DSpeed': str(int(average_DSpeed / cnt)),
+                'average_USpeed': str(int(average_USpeed / cnt)),
+                'place' : place,
             }
-            print(ip_address, packet_loss, latency, bandwidth_utilization, network_speed, network_security_status)
-            return render(request, 'calculate_performance.html', context=context)
+            return render(request, 'results.html', context=context)
 
     return render(request, 'calculate_performance.html')
-
 
 
 def check_packet_loss(ip_address):
